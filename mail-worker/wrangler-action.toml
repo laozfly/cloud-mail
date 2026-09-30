@@ -41,6 +41,7 @@ analysis_cache = "${ANALYSIS_CACHE}"
 #orm_log = false
 domain = "${DOMAIN}"
 admin = "${ADMIN}"
+# jwt_secret is a Workers secret; uploaded by the deploy workflow via `wrangler secret put`
 project_link = "${PROJECT_LINK}"
 
 [build]
