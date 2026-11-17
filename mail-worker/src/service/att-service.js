@@ -9,6 +9,7 @@ import { parseHTML } from 'linkedom';
 import { v4 as uuidv4 } from 'uuid';
 import domainUtils from '../utils/domain-uitls';
 import settingService from "./setting-service";
+import { ATT_CACHE_CONTROL, isDangerousAttType, isSafeInlineAtt } from '../utils/att-headers';
 
 const attService = {
 
@@ -17,14 +18,18 @@ const attService = {
 		for (let attachment of attachments) {
 
 			let metadate = {
-				contentType: attachment.mimeType,
+				contentType: isDangerousAttType(attachment.mimeType)
+					? 'application/octet-stream'
+					: attachment.mimeType,
 			}
 
-			if (!attachment.contentId) {
-				metadate.contentDisposition = `attachment;filename=${attachment.filename}`
+			if (attachment.contentId) {
+				metadate.cacheControl = ATT_CACHE_CONTROL
+				metadate.contentDisposition = isSafeInlineAtt(attachment.mimeType)
+					? `inline;filename=${attachment.filename}`
+					: `attachment;filename=${attachment.filename}`
 			} else {
-				metadate.contentDisposition = `inline;filename=${attachment.filename}`
-				metadate.cacheControl = `max-age=259200`
+				metadate.contentDisposition = `attachment;filename=${attachment.filename}`
 			}
 
 			await r2Service.putObj(c, attachment.key, attachment.content, metadate);
@@ -184,9 +189,13 @@ const attService = {
 				continue;
 			}
 			await r2Service.putObj(c, attData.key, attData.buff, {
-				contentType: attData.mimeType,
-				cacheControl: `max-age=259200`,
-				contentDisposition: `inline;filename=${attData.filename}`
+				contentType: isDangerousAttType(attData.mimeType)
+					? 'application/octet-stream'
+					: attData.mimeType,
+				cacheControl: ATT_CACHE_CONTROL,
+				contentDisposition: isSafeInlineAtt(attData.mimeType)
+					? `inline;filename=${attData.filename}`
+					: `attachment;filename=${attData.filename}`
 			});
 			delete attData.buff;
 		}
