@@ -17,7 +17,6 @@ const dbInit = {
 		await this.v2_6DB(c);
 		await this.v2_7DB(c);
 		await this.v2_8DB(c);
-		await this.v2_9DB(c);
 		await this.v3_0DB(c);
 		await this.v3_1DB(c);
 		await this.v3_2DB(c);
@@ -32,7 +31,11 @@ const dbInit = {
 
 	async v3_6DB(c) {
 		try {
-			await c.env.db.prepare(`UPDATE setting SET auto_refresh = 2 WHERE auto_refresh != 1`).run(); // 1 关闭，其余改为 2 开启
+			// 保留当前的 1（关闭）和 2（开启），只转换旧版的关闭值和刷新间隔。
+			await c.env.db.prepare(`
+				UPDATE setting SET auto_refresh = CASE WHEN auto_refresh = 0 THEN 1 ELSE 2 END
+				WHERE auto_refresh NOT IN (1, 2)
+			`).run();
 		} catch (e) {
 			console.warn(`sql skip:${e.message}`);
 		}
@@ -158,14 +161,6 @@ const dbInit = {
 			console.warn(`sql skip:${e.message}`);
 		}
 
-	},
-
-	async v2_9DB(c) {
-		try {
-			await c.env.db.prepare(`UPDATE setting SET auto_refresh = 5 WHERE auto_refresh = 1;`).run();
-		} catch (e) {
-			console.warn(`sql skip:${e.message}`);
-		}
 	},
 
 	async v2_8DB(c) {
@@ -515,24 +510,23 @@ const dbInit = {
 					(35, '密钥添加', 'reg-key:add', 33, 2, 1),
 					(36, '密钥删除', 'reg-key:delete', 33, 2, 2)
 				`),
+				// 先写入默认权限，再创建首个角色。两条语句共用同一个批次。
 				c.env.db.prepare(`
-					INSERT OR IGNORE INTO role (
-						role_id, name, key, create_time, sort, description, user_id, is_default, send_count, send_type, account_count, avail_domain, ban_email, ban_email_type
-					) VALUES (
-						1, '普通用户', NULL, '0000-00-00 00:00:00', 0, '只有普通使用权限', 0, 1, NULL, 'ban', 10, '', '', 0
+					WITH default_permissions(id, perm_id) AS (
+						VALUES (100, 2), (101, 21), (102, 22), (103, 23), (104, 24),
+						       (105, 4), (106, 5), (107, 1), (108, 3)
 					)
+					INSERT INTO role_perm (id, role_id, perm_id)
+					SELECT id, 1, perm_id FROM default_permissions
+					WHERE NOT EXISTS (SELECT 1 FROM role)
+					  AND NOT EXISTS (SELECT 1 FROM role_perm)
 				`),
 				c.env.db.prepare(`
-					INSERT OR IGNORE INTO role_perm (id, role_id, perm_id) VALUES
-					(100, 1, 2),
-					(101, 1, 21),
-					(102, 1, 22),
-					(103, 1, 23),
-					(104, 1, 24),
-					(105, 1, 4),
-					(106, 1, 5),
-					(107, 1, 1),
-					(108, 1, 3)
+					INSERT INTO role (
+						role_id, name, key, create_time, sort, description, user_id, is_default, send_count, send_type, account_count, avail_domain, ban_email, ban_email_type
+					)
+					SELECT 1, '普通用户', NULL, '0000-00-00 00:00:00', 0, '只有普通使用权限', 0, 1, NULL, 'ban', 10, '', '', 0
+					WHERE NOT EXISTS (SELECT 1 FROM role)
 				`)
 			]);
 		} catch (e) {
